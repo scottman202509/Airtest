@@ -227,12 +227,12 @@ def install(filepath, **kwargs):
     :return: None
     :platforms: Android, iOS
     :Example:
-        >>> install(r"D:\demo\test.apk")  # install Android apk
-        >>> # adb install -r -t D:\\demo\\test.apk
-        >>> install(r"D:\demo\test.apk", install_options=["-r", "-t"])
-
-        >>> install(r"D:\demo\test.ipa") # install iOS ipa
-        >>> install("http://www.example.com/test.ipa") # install iOS ipa from url
+        # >>> install(r"D:\demo\test.apk")  # install Android apk
+        # >>> # adb install -r -t D:\\demo\\test.apk
+        # >>> install(r"D:\demo\test.apk", install_options=["-r", "-t"])
+        #
+        # >>> install(r"D:\demo\test.ipa") # install iOS ipa
+        # >>> install("http://www.example.com/test.ipa") # install iOS ipa from url
 
     """
     return G.DEVICE.install_app(filepath, **kwargs)

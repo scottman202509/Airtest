@@ -648,7 +648,7 @@ class IOS(Device):
                 self.udid = udid
             else:
                 self.udid = parsed
-            self.driver = wda.USBClient(udid=self.udid, port=8100, wda_bundle_id=self.wda_bundle_id)
+            self.driver = wda.USBClient(udid=self.udid, port=8100)
         # Record device's width and height.
         self._size = {'width': None, 'height': None}
         self._current_orientation = None
@@ -671,6 +671,7 @@ class IOS(Device):
 
         # Since uuid and udid are very similar, both names are allowed.
         self._udid = udid or name or serialno
+        self.sessions = {}
 
     def _get_default_device(self):
         """Get local default device when no udid.
@@ -1191,28 +1192,20 @@ class IOS(Device):
         Examples:
             >>> start_app('com.apple.mobilesafari')
         """
-        if not self.is_local_device:
-            # Note: If the bundle_id does not exist, it may get stuck.
-            try:
-                return self.driver.app_launch(bundle_id)
-            except requests.exceptions.ReadTimeout:
-                raise AirtestError(f"App launch timeout, please check if the app is installed: {bundle_id}")
-        else:
-            return TIDevice.start_app(self.udid, bundle_id)
+
+        self.stop_app(bundle_id)
+        self.sessions[bundle_id] = self.driver.session(bundle_id)
+        return True
+
 
     def stop_app(self, bundle_id):
         """
         Note: Both ways of killing the app may fail, nothing responds or just closes the
         app to the background instead of actually killing it and no error will be reported.
         """
-        try:
-            if not self.is_local_device:
-                raise LocalDeviceError()
-            TIDevice.stop_app(self.udid, bundle_id)
-        except:
-            pass
-        finally:
-            self.driver.app_stop(bundle_id=bundle_id)
+        if bundle_id in self.sessions:
+            self.sessions[bundle_id].close()
+        return True
 
     def list_app(self, type="user"):
         """
