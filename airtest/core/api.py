@@ -5,7 +5,7 @@ This module contains the Airtest Core APIs.
 import os
 import time
 
-from airtest.core.cv import Template, loop_find, try_log_screen
+from airtest.core.cv import Template, loop_find, try_log_screen, once_find
 from airtest.core.error import TargetNotFoundError
 from airtest.core.settings import Settings as ST
 from airtest.utils.compat import script_log_dir
@@ -640,6 +640,18 @@ def exists(v,timeout=ST.FIND_TIMEOUT,**kwargs):
     """
     try:
         pos = loop_find(v, timeout=timeout,**kwargs)
+    except TargetNotFoundError:
+        return False
+    else:
+        return pos
+
+
+@logwrap
+def exists_once(v,threshold = None):
+    """
+    """
+    try:
+        pos = once_find(v, threshold=threshold)
     except TargetNotFoundError:
         return False
     else:

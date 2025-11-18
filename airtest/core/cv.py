@@ -35,6 +35,29 @@ MATCHING_METHODS = {
     "brief": BRIEFMatching,
 }
 
+@logwrap
+def once_find(query, threshold=None):
+    """
+    Search for image template in the screen until timeout
+
+    Args:
+        query: image template to be found in screenshot
+        threshold: default is None
+    Raises:
+        TargetNotFoundError: when image template is not found in screenshot
+    Returns:
+        TargetNotFoundError if image template not found, otherwise returns the position where the image template has
+        been found in screenshot
+
+    """
+    screen = G.DEVICE.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
+    if not screen:
+        return False
+    if threshold:
+        query.threshold = threshold
+    match_pos = query.match_in(screen)
+    return match_pos
+
 
 @logwrap
 def loop_find(query, timeout=ST.FIND_TIMEOUT, threshold=None, interval=0.5, intervalfunc=None):
