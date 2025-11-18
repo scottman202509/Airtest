@@ -20,7 +20,7 @@ from tidevice._usbmux import Usbmux
 from tidevice._device import BaseDevice
 from tidevice._proto import MODELS
 from tidevice.exceptions import MuxError
-
+from airtest.core.cv import Template,try_log_screen
 from airtest import aircv
 from airtest.core.device import Device
 from airtest.core.ios.constant import CAP_METHOD, TOUCH_METHOD, IME_METHOD, ROTATION_MODE, KEY_EVENTS, \
@@ -1811,3 +1811,109 @@ class IOS(Device):
         if not self.is_local_device:
             raise LocalDeviceError()
         return TIDevice.is_dir(self.udid, remote_path, bundle_id=bundle_id)
+
+    def exists(self, v,threshold = None):
+        """
+        Check whether given target exists on device screen
+        :param v: target to be checked
+        :param threshold: default is None
+        :return: False if target is not found, otherwise returns the coordinates of the target
+        """
+        screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
+        if screen is None:
+            return False
+        if threshold:
+            v.threshold = threshold
+        match_pos = v.match_in(screen)
+        return match_pos
+
+    def wait(self,v,timeout=ST.FIND_TIMEOUT, threshold=None, interval=0.5, intervalfunc=None):
+        """
+            Check whether given target exists on device screen
+            :return: False if target is not found, otherwise returns the coordinates of the target
+            :platforms: Android, Windows, iOS
+        """
+        start_time = time.time()
+        while True:
+            screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
+            if screen is not None:
+                if threshold:
+                    v.threshold = threshold
+                match_pos = v.match_in(screen)
+                if match_pos:
+                    return match_pos
+            if intervalfunc is not None:
+                intervalfunc()
+            # 超时则raise，未超时则进行下次循环:
+            if (time.time() - start_time) > timeout:
+                break
+            else:
+                time.sleep(interval)
+        return None
+
+    def find_all(self,v):
+        screen = self.snapshot(quality=ST.SNAPSHOT_QUALITY)
+        if screen is None:
+            return []
+        return v.match_all_in(screen)
+
+    def swipe_image(self,v1, v2=None, vector=None, **kwargs):
+        if isinstance(v2, Template):
+            pos1 = self.wait(v1, timeout=ST.FIND_TIMEOUT)
+        else:
+            pos1 = v1
+        if not pos1:
+            return None,None
+        if v2:
+            if isinstance(v2, Template):
+                pos2 = self.wait(v2, timeout=ST.FIND_TIMEOUT)
+            else:
+                pos2 = v2
+            if not pos2:
+                return None,None
+        elif vector:
+            if vector[0] <= 1 and vector[1] <= 1:
+                w, h = self.get_current_resolution()
+                vector = (int(vector[0] * w), int(vector[1] * h))
+            pos2 = (pos1[0] + vector[0], pos1[1] + vector[1])
+        else:
+            return None,None
+        pos1, pos2 = self.swipe(pos1, pos2, **kwargs) or (pos1, pos2)
+        return pos1, pos2
+
+    def double_click_image(self,v):
+        if isinstance(v, Template):
+            pos = self.wait(v, timeout=ST.FIND_TIMEOUT)
+        else:
+            pos = v
+        if not pos:
+            return None
+        pos = self.double_click(pos) or pos
+        return pos
+
+    def touch_image(self,v, times=1, **kwargs):
+        if isinstance(v, Template):
+            pos = self.wait(v, timeout=ST.FIND_TIMEOUT)
+        else:
+            pos = v
+        for _ in range(times):
+            # If pos is a relative coordinate, return the converted click coordinates.
+            # iOS may all use vertical screen coordinates, so coordinates will not be returned.
+            pos = self.touch(pos, **kwargs) or pos
+            time.sleep(0.05)
+        return pos
+
+    def snapshot_image(self,filename=None, msg="", quality=None, max_size=None):
+        if not quality:
+            quality = ST.SNAPSHOT_QUALITY
+        if not max_size and ST.IMAGE_MAXSIZE:
+            max_size = ST.IMAGE_MAXSIZE
+        if filename:
+            if not os.path.isabs(filename):
+                logdir = ST.LOG_DIR or "."
+                filename = os.path.join(logdir, filename)
+            screen = self.snapshot(filename, quality=quality, max_size=max_size)
+            return try_log_screen(screen, quality=quality, max_size=max_size)
+        else:
+            return try_log_screen(quality=quality, max_size=max_size)
+

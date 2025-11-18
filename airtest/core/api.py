@@ -219,7 +219,7 @@ def clear_app(package):
 
 @logwrap
 def install(filepath, **kwargs):
-    """
+    r"""
     Install application on device
 
     :param filepath: the path to file to be installed on target device
@@ -738,7 +738,7 @@ def paste(*args, **kwargs):
 
 @logwrap
 def push(local, remote, *args, **kwargs):
-    """
+    r"""
     Push file from local to remote
 
     :param local: local file path
@@ -765,7 +765,7 @@ def push(local, remote, *args, **kwargs):
 
 @logwrap
 def pull(remote, local, *args, **kwargs):
-    """
+    r"""
     Pull file from remote to local
 
     :param remote: remote file path
