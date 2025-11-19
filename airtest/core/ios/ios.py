@@ -1000,6 +1000,8 @@ class IOS(Device):
             >>> touch((0.5, 0.5), duration=1)
 
         """
+        if not pos:
+            return
         x, y = pos
         if not (x < 1 and y < 1):
             x, y = int(x * self.touch_factor), int(y * self.touch_factor)
@@ -1896,6 +1898,8 @@ class IOS(Device):
             pos = self.wait(v, timeout=ST.FIND_TIMEOUT)
         else:
             pos = v
+        if not pos:
+            return None
         for _ in range(times):
             # If pos is a relative coordinate, return the converted click coordinates.
             # iOS may all use vertical screen coordinates, so coordinates will not be returned.
