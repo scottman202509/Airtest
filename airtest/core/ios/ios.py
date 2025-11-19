@@ -1895,7 +1895,7 @@ class IOS(Device):
 
     def touch_image(self,v, times=1, **kwargs):
         if isinstance(v, Template):
-            pos = self.wait(v, timeout=ST.FIND_TIMEOUT)
+            pos = self.wait(v, timeout=kwargs.get('timeout', ST.FIND_TIMEOUT))
         else:
             pos = v
         if not pos:
