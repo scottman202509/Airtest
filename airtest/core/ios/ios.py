@@ -1860,7 +1860,7 @@ class IOS(Device):
         return v.match_all_in(screen)
 
     def swipe_image(self,v1, v2=None, vector=None, **kwargs):
-        if isinstance(v2, Template):
+        if isinstance(v1, Template):
             pos1 = self.wait(v1, timeout=ST.FIND_TIMEOUT)
         else:
             pos1 = v1
