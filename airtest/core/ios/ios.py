@@ -1821,13 +1821,16 @@ class IOS(Device):
         :param threshold: default is None
         :return: False if target is not found, otherwise returns the coordinates of the target
         """
-
+        logging.info(f"=========进入截图逻辑")
         screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
+        logging.info(f"=========退出截图逻辑")
         if screen is None:
             return False
         if threshold:
             v.threshold = threshold
+        logging.info(f"=========进入match_in逻辑")
         match_pos = v.match_in(screen)
+        logging.info(f"=========退出match_in逻辑")
         return match_pos
 
     def wait(self,v,timeout=ST.FIND_TIMEOUT, threshold=None, interval=0.5, intervalfunc=None):
