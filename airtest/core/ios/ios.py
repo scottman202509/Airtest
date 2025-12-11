@@ -949,7 +949,7 @@ class IOS(Device):
         This is almost same as wda implementation, but without png header check,
         as response data is now jpg format in mid quality.
         """
-        value = self.driver.http.get('screenshot').value
+        value = self.driver.http.get('screenshot',timeout=30).value
         raw_value = base64.b64decode(value)
         return raw_value
 
@@ -1821,6 +1821,7 @@ class IOS(Device):
         :param threshold: default is None
         :return: False if target is not found, otherwise returns the coordinates of the target
         """
+
         screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
         if screen is None:
             return False
