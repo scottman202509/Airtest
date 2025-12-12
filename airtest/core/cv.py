@@ -190,6 +190,8 @@ class Template(object):
     def _cv_match(self, screen):
         # in case image file not exist in current directory:
         ori_image = self._imread()
+        if ori_image is None:
+            return None
         image = self._resize_image(ori_image, screen, ST.RESIZE_METHOD)
         ret = None
         for method in ST.CVSTRATEGY:
