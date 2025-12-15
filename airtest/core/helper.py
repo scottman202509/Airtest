@@ -251,6 +251,8 @@ def import_device_cls(platform):
         from airtest.core.ios import IOS as cls
     elif platform == "linux":
         from airtest.core.linux.linux import Linux as cls
+    elif platform == "chrome":
+        from airtest.core.chrome.chrome import Chrome as cls
     else:
         raise RuntimeError("Unknown platform: %s" % platform)
     return cls

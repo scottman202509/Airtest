@@ -46,7 +46,7 @@ def init_device(platform="Android", uuid=None, **kwargs):
 
 
 @logwrap
-def connect_device(uri):
+def connect_device(uri, **kwargs):
     """
     Initialize device with uri, and set as current device.
 

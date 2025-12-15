@@ -1,9 +1,11 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
-
+import json
 import os
 import re
+import subprocess
 import sys
+import uuid
 
 import requests.exceptions
 import wda
@@ -120,6 +122,39 @@ def format_file_list(file_list):
         formatted_list.append(file_info)
 
     return formatted_list
+def check_output_safe(proc_params,timeout = 10):
+    content, stderr = '',''
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            proc_params,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        content, stderr = proc.communicate(timeout=timeout)
+    except Exception as e:
+        traceback.print_exc()
+    if proc:
+        proc.kill()
+    return content+stderr
+
+def restart_ios_tunnel(restart = False):
+    if restart:
+        try:
+            pids = subprocess.check_output(["pgrep", "-f", 'ios tunnel start']).decode().split()
+            for pid in pids:
+                subprocess.run(['sudo',"kill", "-9", pid])
+                logging.debug(f"Killed {len(pids)} processes named '{pid}'")
+        except subprocess.CalledProcessError:
+            pass
+    subprocess.Popen(
+        ["sudo",'ios','tunnel','start','--userspace'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True
+    )
+
 
 
 @add_decorator_to_methods(decorator_pairing_dialog)
@@ -605,6 +640,7 @@ class IOS(Device):
 
         - ``iproxy $port 8100 $udid``
     """
+    cls_restart_flag = None
 
     def __init__(self, addr=DEFAULT_ADDR, cap_method=CAP_METHOD.MJPEG, mjpeg_port=None, udid=None, name=None,
                  serialno=None, wda_bundle_id=None):
@@ -631,10 +667,14 @@ class IOS(Device):
         # The three connection modes are determined by the addr.
         # e.g., connect remote device http://10.227.70.247:20042
         # e.g., connect local device http://127.0.0.1:8100 or http://localhost:8100 or http+usbmux://00008020-001270842E88002E
-        self.udid = udid or name or serialno
         self._wda_bundle_id = wda_bundle_id
+
+        if IOS.cls_restart_flag is None:
+            restart_ios_tunnel()
+            IOS.cls_restart_flag = True
         parsed = urlparse(self.addr).netloc.split(":")[0] if ":" in urlparse(self.addr).netloc else urlparse(
             self.addr).netloc
+
         if parsed not in ["localhost", "127.0.0.1"] and "." in parsed:
             # Connect remote device via url.
             self.is_local_device = False
@@ -648,6 +688,7 @@ class IOS(Device):
                 self.udid = udid
             else:
                 self.udid = parsed
+            self.start_wda()
             self.driver = wda.USBClient(udid=self.udid, port=8100)
         # Record device's width and height.
         self._size = {'width': None, 'height': None}
@@ -657,7 +698,9 @@ class IOS(Device):
         self._is_pad = None
         self._using_ios_tagent = None
         self._device_info = {}
-        self.instruct_helper = InstructHelper(self.device_info['uuid'])
+        if not self.udid:
+            self.udid = self.device_info['uuid']
+        self.instruct_helper = InstructHelper(self.udid)
         self.mjpegcap = MJpegcap(self.instruct_helper, ori_function=lambda: self.display_info,
                                  ip=self.ip, port=mjpeg_port)
         # Start up RotationWatcher with default session.
@@ -672,6 +715,8 @@ class IOS(Device):
         # Since uuid and udid are very similar, both names are allowed.
         self._udid = udid or name or serialno
         self.sessions = {}
+        self.wda_process = None
+
 
     def _get_default_device(self):
         """Get local default device when no udid.
@@ -964,19 +1009,27 @@ class IOS(Device):
         Returns:
             Screen snapshot's cv2 object.
         """
-        data = self._neo_wda_screenshot()
+        start_time = time.time()
+        screen = None
+        if not filename:
+            if not os.path.exists('runtime'):
+                os.mkdir('runtime')
+            filename = os.path.join('runtime', f'{self.udid}_{str(uuid.uuid4())}.png')
+
         # Output cv2 object.
         try:
-            screen = aircv.utils.string_2_img(data)
+            check_output_safe(["ios", "screenshot", '--udid',self.udid,'--output',filename])
+            if os.path.exists(filename):
+                with open(filename, 'rb') as f:
+                    screen = aircv.utils.string_2_img(f.read())
+                os.remove(filename)
         except:
             # May be black/locked screen or other reason, print exc for debugging.
             traceback.print_exc()
+
             return None
-
-        # Save as file if needed.
-        if filename:
-            aircv.imwrite(filename, screen, quality, max_size=max_size)
-
+        end_time = time.time()
+        logging.debug(f'{self.udid} screenshot took {end_time - start_time} seconds')
         return screen
 
     def get_frame_from_stream(self):
@@ -1814,23 +1867,20 @@ class IOS(Device):
             raise LocalDeviceError()
         return TIDevice.is_dir(self.udid, remote_path, bundle_id=bundle_id)
 
-    def exists(self, v,threshold = None):
+    def exists(self, v,screen = None,threshold = None):
         """
         Check whether given target exists on device screen
         :param v: target to be checked
         :param threshold: default is None
         :return: False if target is not found, otherwise returns the coordinates of the target
         """
-        logging.debug(f"=========进入截图逻辑")
-        screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
-        logging.debug(f"=========退出截图逻辑")
+        if screen is None:
+            screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
         if screen is None:
             return False
         if threshold:
             v.threshold = threshold
-        logging.debug(f"=========进入match_in逻辑")
         match_pos = v.match_in(screen)
-        logging.debug(f"=========退出match_in逻辑")
         return match_pos
 
     def wait(self,v,timeout=ST.FIND_TIMEOUT, threshold=None, interval=0.5, intervalfunc=None):
@@ -1840,6 +1890,7 @@ class IOS(Device):
             :platforms: Android, Windows, iOS
         """
         start_time = time.time()
+
         while True:
             screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
             if screen is not None:
@@ -1857,22 +1908,21 @@ class IOS(Device):
                 time.sleep(interval)
         return None
 
-    def find_all(self,v):
-        screen = self.snapshot(quality=ST.SNAPSHOT_QUALITY)
+    def find_all(self,v,screen = None):
         if screen is None:
-            return []
+            screen = self.snapshot(filename=None, quality=ST.SNAPSHOT_QUALITY)
         return v.match_all_in(screen)
 
-    def swipe_image(self,v1, v2=None, vector=None, **kwargs):
+    def swipe_image(self,v1, v2=None, vector=None, screen = None,**kwargs):
         if isinstance(v1, Template):
-            pos1 = self.wait(v1, timeout=ST.FIND_TIMEOUT)
+            pos1 = self.exists(v1,screen=screen)
         else:
             pos1 = v1
         if not pos1:
             return None,None
         if v2:
             if isinstance(v2, Template):
-                pos2 = self.wait(v2, timeout=ST.FIND_TIMEOUT)
+                pos2 = self.exists(v2,screen=screen)
             else:
                 pos2 = v2
             if not pos2:
@@ -1887,9 +1937,9 @@ class IOS(Device):
         pos1, pos2 = self.swipe(pos1, pos2, **kwargs) or (pos1, pos2)
         return pos1, pos2
 
-    def double_click_image(self,v):
+    def double_click_image(self,v,screen = None,**kwargs):
         if isinstance(v, Template):
-            pos = self.wait(v, timeout=ST.FIND_TIMEOUT)
+            pos = self.exists(v,screen=screen)
         else:
             pos = v
         if not pos:
@@ -1897,9 +1947,9 @@ class IOS(Device):
         pos = self.double_click(pos) or pos
         return pos
 
-    def touch_image(self,v, times=1, **kwargs):
+    def touch_image(self,v, screen = None,times=1, **kwargs):
         if isinstance(v, Template):
-            pos = self.wait(v, timeout=kwargs.get('timeout', ST.FIND_TIMEOUT))
+            pos = self.exists(v,screen=screen)
         else:
             pos = v
         if not pos:
@@ -1924,4 +1974,53 @@ class IOS(Device):
             return try_log_screen(screen, quality=quality, max_size=max_size)
         else:
             return try_log_screen(quality=quality, max_size=max_size)
+
+    def is_ready(self):
+        return self.driver.is_ready()
+
+    def start_wda(self):
+        is_exists = False
+        try:
+            res = check_output_safe(["ios", "ps", '--udid', self.udid])
+            process_list = json.loads(res)
+            for process in process_list:
+                name = process.get('Name', '')
+                if 'WebDriverAgentRunner-Runner' in name:
+                    is_exists = True
+                    break
+        except subprocess.CalledProcessError:
+            pass
+        if is_exists:
+            return is_exists
+        try:
+            pids = check_output_safe(["pgrep", "-f", f'udid {self.udid}']).split()
+            for pid in pids:
+                subprocess.run(['sudo', "kill", "-9", pid])
+                logging.debug(f"Killed {len(pids)} wda processes named '{pid}'")
+        except subprocess.CalledProcessError:
+            pass
+        args = ["ios", 'runwda', '--udid', self.udid, '--bundleid',str(self._wda_bundle_id), '--testrunnerbundleid',str(self._wda_bundle_id), '--xctestconfig',f'WebDriverAgentRunner.xctest']
+
+        subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        time.sleep(3)
+
+    def restart_wda(self):
+        try:
+            res = check_output_safe(["ios", "ps", '--udid', self.udid])
+            process_list = json.loads(res)
+            for process in process_list:
+                name = process.get('Name','')
+                pid = str(process.get('Pid'))
+                if 'WebDriverAgentRunner-Runner' in name:
+                    subprocess.run(['ios', "kill", '--udid',self.udid, "--pid", pid])
+                    logging.debug(f"{self.udid} Killed  wda processes named {name} {pid}")
+        except subprocess.CalledProcessError:
+            pass
+        self.start_wda()
+
 
