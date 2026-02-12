@@ -41,7 +41,7 @@ class Chrome(Device):
         options.debugger_address = self.addr
         # options.add_argument("--window-size=500,962")
         # options.add_argument("--force-device-scale-factor=1")
-        self.driver = webdriver.Chrome(options=options)
+        self.driver = webdriver.Chrome(options=options,keep_alive=True)
         self.actions = ActionChains(self.driver)
         self._size = self.window_size()
         self.display_size = {}

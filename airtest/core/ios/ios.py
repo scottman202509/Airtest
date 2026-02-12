@@ -8,7 +8,7 @@ import sys
 import uuid
 
 import requests.exceptions
-import wda
+from airtest import wda
 import time
 import base64
 import inspect
@@ -640,7 +640,6 @@ class IOS(Device):
 
         - ``iproxy $port 8100 $udid``
     """
-    cls_restart_flag = None
 
     def __init__(self, addr=DEFAULT_ADDR, cap_method=CAP_METHOD.MJPEG, mjpeg_port=None, udid=None, name=None,
                  serialno=None, wda_bundle_id=None):
@@ -668,10 +667,6 @@ class IOS(Device):
         # e.g., connect remote device http://10.227.70.247:20042
         # e.g., connect local device http://127.0.0.1:8100 or http://localhost:8100 or http+usbmux://00008020-001270842E88002E
         self._wda_bundle_id = wda_bundle_id
-
-        if IOS.cls_restart_flag is None:
-            restart_ios_tunnel()
-            IOS.cls_restart_flag = True
         parsed = urlparse(self.addr).netloc.split(":")[0] if ":" in urlparse(self.addr).netloc else urlparse(
             self.addr).netloc
 
@@ -688,7 +683,6 @@ class IOS(Device):
                 self.udid = udid
             else:
                 self.udid = parsed
-            self.start_wda()
             self.driver = wda.USBClient(udid=self.udid, port=8100)
         # Record device's width and height.
         self._size = {'width': None, 'height': None}
@@ -1978,42 +1972,28 @@ class IOS(Device):
     def is_ready(self):
         return self.driver.is_ready()
 
-    def start_wda(self):
-        is_exists = False
+    def start_wda(self,webDriverAgentProj_path):
         try:
-            res = check_output_safe(["ios", "ps", '--udid', self.udid])
-            process_list = json.loads(res)
-            for process in process_list:
-                name = process.get('Name', '')
-                if 'WebDriverAgentRunner-Runner' in name:
-                    is_exists = True
-                    break
-        except subprocess.CalledProcessError:
-            pass
-        if is_exists:
-            return is_exists
-        try:
-            pids = check_output_safe(["pgrep", "-f", f'udid {self.udid}']).split()
+            pids = check_output_safe(["pgrep", "-f", f'{webDriverAgentProj_path}']).split()
             for pid in pids:
                 subprocess.run(['sudo', "kill", "-9", pid])
                 logging.debug(f"Killed {len(pids)} wda processes named '{pid}'")
         except subprocess.CalledProcessError:
             pass
-        args = ["ios", 'runwda', '--udid', self.udid, '--bundleid',str(self._wda_bundle_id), '--testrunnerbundleid',str(self._wda_bundle_id), '--xctestconfig',f'WebDriverAgentRunner.xctest']
-
+        args = f"xcodebuild test-without-building -project {webDriverAgentProj_path} -scheme WebDriverAgentRunner -destination 'platform=iOS,id={self.udid}'"
         subprocess.Popen(
             args,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            start_new_session=True
+            start_new_session=True,
+            shell=True
         )
-        time.sleep(3)
 
-    def restart_wda(self):
+    def restart_wda(self,webDriverAgentProj_path):
         try:
             res = check_output_safe(["ios", "ps", '--udid', self.udid])
             process_list = json.loads(res)
-            for process in process_list:
+            for process in process_list if isinstance(process_list, list) else []:
                 name = process.get('Name','')
                 pid = str(process.get('Pid'))
                 if 'WebDriverAgentRunner-Runner' in name:
@@ -2021,6 +2001,6 @@ class IOS(Device):
                     logging.debug(f"{self.udid} Killed  wda processes named {name} {pid}")
         except subprocess.CalledProcessError:
             pass
-        self.start_wda()
+        self.start_wda(webDriverAgentProj_path)
 
 
