@@ -1992,13 +1992,19 @@ class IOS(Device):
     def restart_wda(self,webDriverAgentProj_path):
         try:
             res = check_output_safe(["ios", "ps", '--udid', self.udid])
-            process_list = json.loads(res)
-            for process in process_list if isinstance(process_list, list) else []:
-                name = process.get('Name','')
-                pid = str(process.get('Pid'))
-                if 'WebDriverAgentRunner-Runner' in name:
-                    subprocess.run(['ios', "kill", '--udid',self.udid, "--pid", pid])
-                    logging.debug(f"{self.udid} Killed  wda processes named {name} {pid}")
+            for line in res.splitlines():
+                try:
+                    process_list = json.loads(line)
+                except:
+                    continue
+                for process in process_list if isinstance(process_list, list) else []:
+                    if not isinstance(process, dict):
+                        continue
+                    name = process.get('Name','')
+                    pid = str(process.get('Pid'))
+                    if 'WebDriverAgentRunner-Runner' in name:
+                        subprocess.run(['ios', "kill", '--udid',self.udid, "--pid", pid])
+                        logging.debug(f"{self.udid} Killed  wda processes named {name} {pid}")
         except subprocess.CalledProcessError:
             pass
         self.start_wda(webDriverAgentProj_path)
